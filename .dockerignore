@@ -1,0 +1,24 @@
+# Secrets — never bake into the image; set via HF Space Secrets instead
+.env
+.env.example
+
+# Git and IDE metadata
+.git/
+.gitignore
+.cursor/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Dev/test artefacts
+tests/
+scripts/
+check_users.py
+pytest.ini
+
+# Docs (not needed at runtime)
+README.md
