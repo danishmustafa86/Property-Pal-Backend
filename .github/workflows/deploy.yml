@@ -15,10 +15,10 @@ jobs:
 
       - name: Push to Hugging Face
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.YOURESTATE }}
         run: |
-          git config --global user.email "you@example.com"
-          git config --global user.name "github-actions"
+          git config --global user.email "danishjajja86@gmail.com"
+          git config --global user.name "Danish Mustafa"
 
           git clone https://danishmustafa86:$HF_TOKEN@huggingface.co/spaces/danishmustafa86/YourEstate space
 
