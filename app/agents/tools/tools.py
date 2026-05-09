@@ -251,11 +251,31 @@ def build_investment_research_tools(max_results: int = 5) -> list[Any]:
     return [tool] if tool is not None else []
 
 
-def build_investment_tavily_queries(location: str, country: str) -> list[str]:
+def build_investment_tavily_queries(location: str, country: str, raw_query: str = "") -> list[str]:
     loc = location.strip() or "the region"
     ctry = country.strip() or "the country"
-    return [
-        f"current property tax laws stamp duty home buyer rules regulations {loc} {ctry} 2025 2026",
-        f"infrastructure projects new roads metro malls commercial development news {loc} {ctry} 2025 2026",
-        f"average asking price residential real estate listings portals {loc} {ctry} 2025 2026",
+    lower_q = raw_query.lower()
+
+    queries = [
+        f"property tax stamp duty home buyer regulations {loc} {ctry} 2025 2026",
+        f"infrastructure development commercial projects real estate impact {loc} {ctry} 2025 2026",
+        f"average property price trends residential listings {loc} {ctry} 2025 2026",
     ]
+
+    # Context-specific queries extracted from what the user actually asked about
+    if any(kw in lower_q for kw in ["flood", "ravi", "river", "water", "rain", "inundation", "drainage"]):
+        queries.append(f"flood risk Ravi river property value impact {loc} {ctry} 2024 2025")
+
+    if any(kw in lower_q for kw in ["crime", "security", "safe", "unsafe", "theft", "dangerous"]):
+        queries.append(f"crime rate safety neighborhood {loc} {ctry} 2025")
+
+    if any(kw in lower_q for kw in ["school", "education", "university", "college"]):
+        queries.append(f"schools universities education facilities near {loc} {ctry}")
+
+    if any(kw in lower_q for kw in ["hospital", "health", "medical", "clinic"]):
+        queries.append(f"hospitals medical facilities near {loc} {ctry}")
+
+    if any(kw in lower_q for kw in ["road", "transport", "metro", "commute", "traffic", "highway"]):
+        queries.append(f"transport connectivity roads metro infrastructure {loc} {ctry} 2025")
+
+    return queries

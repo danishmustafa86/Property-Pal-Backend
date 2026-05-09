@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Annotated, Any, Literal, TypedDict
 
 import pandas as pd
@@ -42,6 +43,53 @@ LOCATION_HINTS = [
     "gulistan",
     "scheme",
 ]
+
+# Ordered longest-first so multi-word names match before their sub-strings
+_SUB_LOCALITY_KEYWORDS: list[str] = sorted(
+    [
+        "shahdra town", "shahdra", "shahdara", "johar town", "model town",
+        "garden town", "new garden town", "iqbal town", "allama iqbal town",
+        "faisal town", "green town", "township", "wapda city", "cantt",
+        "cantonment", "kot lakhpat", "samanabad", "gulberg", "gulshan-e-iqbal",
+        "north nazimabad", "nazimabad", "malir", "korangi", "saddar",
+        "blue area", "soan garden", "hayatabad", "university town",
+        "bahria town", "bahria", "dha", "pechs", "clifton", "defence", "defense",
+        "g-10", "g-11", "g-9", "f-10", "f-7", "f-8", "i-8", "i-10",
+        "rawat", "taxila", "airport road",
+    ],
+    key=len,
+    reverse=True,
+)
+
+
+def _extract_location_label(query: str, city: str | None, fallback_keyword: str | None) -> str:
+    lower = query.lower()
+    sub_loc: str | None = None
+
+    # Step 1 — check fixed known sub-locality list (longest match first)
+    for loc in _SUB_LOCALITY_KEYWORDS:
+        if loc in lower:
+            sub_loc = loc.title()
+            break
+
+    # Step 2 — dynamic extraction: "in <anything> <city>" e.g. "in city housing samundari road faisalabad"
+    if not sub_loc and city:
+        pat = rf'\bin\s+(.+?)\s+{re.escape(city.lower())}\b'
+        m = re.search(pat, lower)
+        if m:
+            candidate = m.group(1).strip()
+            if 3 <= len(candidate) <= 60 and candidate not in {"a", "an", "the"}:
+                sub_loc = candidate.title()
+
+    if sub_loc and city:
+        return f"{sub_loc}, {city.title()}"
+    if city:
+        return city.title()
+    if sub_loc:
+        return sub_loc
+    if fallback_keyword:
+        return fallback_keyword[:80]
+    return query[:80]
 
 
 def _coerce_null_llm_content(messages: list) -> list:
@@ -115,6 +163,9 @@ def _has_location_hint(query: str, parsed_city: str | None) -> bool:
     for c in QueryParser.CITY_KEYWORDS:
         if c in lower:
             return True
+    for loc in _SUB_LOCALITY_KEYWORDS:
+        if loc in lower:
+            return True
     return False
 
 
@@ -175,7 +226,7 @@ class InvestmentAnalystGraph:
                 "country": "",
             }
 
-        location = city or (keyword or "")[:80] or query[:80]
+        location = _extract_location_label(query, city, parsed.keyword)
         country = _infer_country(query, city)
         return {
             "validation_ok": True,
@@ -210,13 +261,14 @@ class InvestmentAnalystGraph:
     async def _researcher_node(self, state: dict[str, Any]) -> dict[str, Any]:
         location = state.get("location_label") or ""
         country = state.get("country") or "Pakistan"
+        raw_query = state.get("raw_query") or ""
         loop = asyncio.get_running_loop()
 
         def macro_job() -> dict[str, Any]:
             return MacroAnalyst().full_report()
 
         macro_task = loop.run_in_executor(None, macro_job)
-        queries = build_investment_tavily_queries(location, country)
+        queries = build_investment_tavily_queries(location, country, raw_query)
         tavily_task = run_tavily_queries(queries, max_results=4)
 
         listing_task = self._fetch_listing_micro(location)
@@ -239,19 +291,34 @@ class InvestmentAnalystGraph:
             "last_tool_results": tool_rows,
         }
 
-    async def _fetch_listing_micro(self, location: str, parsed_city: str | None = None) -> dict[str, Any] | None:
-        city = parsed_city or None
-        if not city and location:
-            lower = location.lower()
-            for c in QueryParser.CITY_KEYWORDS:
-                if c in lower:
-                    city = c.title()
-                    break
-        if not city:
+    async def _fetch_listing_micro(self, location: str) -> dict[str, Any] | None:
+        lower = location.lower()
+        city: str | None = None
+        sub_locality_keyword: str | None = None
+
+        for c in QueryParser.CITY_KEYWORDS:
+            if c in lower:
+                city = c.title()
+                break
+
+        # "Shahdra Town, Lahore" → keyword="Shahdra Town" so the DB text-search narrows to that area
+        if "," in location:
+            parts = [p.strip() for p in location.split(",")]
+            if parts[0] and len(parts[0]) > 2:
+                sub_locality_keyword = parts[0]
+        elif not city and location.strip():
+            sub_locality_keyword = location.strip()[:80]
+
+        if not city and not sub_locality_keyword:
             return None
         try:
             svc = SearchService()
-            req = SearchRequest(page_size=5, city=city, purpose="buy")
+            req = SearchRequest(
+                page_size=5,
+                city=city,
+                purpose="buy",
+                keyword=sub_locality_keyword,
+            )
             return await svc.search(req)
         except Exception as exc:
             logger.warning("Listing micro snapshot failed: %s", exc)
@@ -309,6 +376,18 @@ class InvestmentAnalystGraph:
             "active_listings_sample": listing,
             "forecaster_output": forecast,
         }
+        user_query_lower = (state.get("raw_query") or "").lower()
+        context_note = ""
+        if any(kw in user_query_lower for kw in ["flood", "ravi", "river", "water", "inundation"]):
+            context_note += (
+                " The user is specifically concerned about flood risk near the Ravi river — "
+                "address this directly in `summary` and `risk_factors` with specific context."
+            )
+        if any(kw in user_query_lower for kw in ["decline", "depreciation", "fall", "drop", "crash"]):
+            context_note += (
+                " The user asks about potential price decline — evaluate this honestly using the macro data."
+            )
+
         system = (
             "You are a senior real-estate investment analyst. "
             "Synthesize macro CSV metrics, Tavily web snippets, and the numeric forecast. "
@@ -317,9 +396,12 @@ class InvestmentAnalystGraph:
             "(copy period and predicted_price). "
             "Recommendation must be exactly one of: Buy, Hold, Sell. "
             "confidence_score is an integer 0-100. "
-            "risk_factors: 3-6 concise bullets. "
+            "`summary`: write 2-4 natural sentences that speak directly to the user's actual question — "
+            "address their specific concerns (locality outlook, risks they mentioned, affordability). "
+            "risk_factors: 3-6 concise bullets that address specific risks relevant to the location and query. "
             "legal_notes: summarize tax/regulatory themes from web research; stay non-definitive. "
-            "Do not invent specific laws or portal prices not hinted in the inputs."
+            "Do not invent specific laws or portal prices not hinted in the inputs. "
+            "Write like a trusted advisor, not a data dump." + context_note
         )
         human = f"Context JSON:\n{json.dumps(payload, default=str)[:24000]}"
 
@@ -394,18 +476,41 @@ class InvestmentAnalystGraph:
 
     @staticmethod
     def _render_executive_summary(out: StructuredAnalysisOutput, location: str, country: str) -> str:
-        lines = [
-            f"## Investment brief — {location}, {country}",
-            "",
-            f"**Recommendation:** {out.recommendation}  ",
-            f"**Confidence:** {out.confidence_score}%",
-            "",
-            "### Key risks",
-        ]
-        for r in out.risk_factors[:6]:
-            lines.append(f"- {r}")
-        lines.extend(["", "### Legal / regulatory notes", out.legal_notes])
-        return "\n".join(lines)
+        parts: list[str] = []
+
+        # LLM-generated narrative paragraph addressing the user's specific question
+        if out.summary:
+            parts.append(out.summary)
+            parts.append("")
+
+        # Verdict — inline, conversational
+        rec_phrases = {
+            "Buy": "lean towards buying",
+            "Hold": "hold off for now",
+            "Sell": "consider selling or waiting",
+        }
+        rec_phrase = rec_phrases.get(out.recommendation, out.recommendation.lower())
+        parts.append(
+            f"Based on the data, I'd **{rec_phrase}** in {location} at this point "
+            f"— confidence is around {out.confidence_score}%."
+        )
+
+        # Risk bullets without a section header
+        if out.risk_factors:
+            parts.append("")
+            parts.append("**A few things worth keeping in mind:**")
+            for r in out.risk_factors[:5]:
+                parts.append(f"- {r}")
+
+        # Legal note — short, italic footer
+        if out.legal_notes:
+            clean_legal = out.legal_notes.replace(MANDATORY_DISCLAIMER, "").strip()
+            parts.append("")
+            if clean_legal:
+                parts.append(clean_legal)
+            parts.append(f"_{MANDATORY_DISCLAIMER}_")
+
+        return "\n".join(parts)
 
     def _compile(self):
         g = StateGraph(InvestmentState)

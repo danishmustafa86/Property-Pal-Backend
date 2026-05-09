@@ -45,76 +45,71 @@ def _build_conversational_message(query: str, filters: dict, results: list[dict]
     max_marlas = filters.get("max_marlas")
 
     if not results:
-        scope_parts = []
-        if purpose:
-            scope_parts.append(f"for **{purpose}**")
-        if prop_type and prop_type != "property":
-            scope_parts.append(f"({prop_type})")
-        if city:
-            scope_parts.append(f"in **{city}**")
-        scope = " ".join(scope_parts).strip()
-        if not scope:
-            scope = "for your request"
+        no_match_parts: list[str] = []
+        scope = " ".join(filter(None, [
+            f"for {purpose}" if purpose else "",
+            f"in {city}" if city else "",
+            f"under PKR {_format_price(max_price)}" if max_price else "",
+        ])).strip() or "matching your request"
 
-        suggestions = []
+        no_match_parts.append(f"Nothing active {scope} at the moment.")
+
+        tweaks: list[str] = []
         if max_price:
-            suggestions.append(f"increase max budget above PKR {_format_price(max_price)}")
-        if min_price:
-            suggestions.append(f"reduce minimum budget below PKR {_format_price(min_price)}")
-        if rooms:
-            suggestions.append("relax bedroom requirement by 1")
+            tweaks.append(f"bump the budget above PKR {_format_price(max_price)}")
         if min_marlas or max_marlas:
-            suggestions.append("broaden the area range")
+            tweaks.append("broaden the size range a bit")
+        if rooms:
+            tweaks.append("drop the bedroom count by one")
         if city:
-            suggestions.append("include nearby localities/cities")
-        if not suggestions:
-            suggestions = ["add city + budget + purpose", "or try broader keywords"]
+            tweaks.append("try a neighbouring area or city")
+        if not tweaks:
+            tweaks = ["add a city and purpose to the search"]
 
-        return (
-            f"I checked current active listings {scope}, but no exact matches are available right now.\n\n"
-            f"**Best next step:** {suggestions[0]}.\n"
-            f"**Also try:** {', '.join(suggestions[1:3])}."
+        no_match_parts.append("You could try: " + ", or ".join(tweaks[:2]) + ".")
+        return " ".join(no_match_parts)
+
+    # --- results found ---
+    prices = [r.get("price", 0) for r in results if r.get("price")]
+    price_range = ""
+    if prices:
+        lo, hi = min(prices), max(prices)
+        price_range = (
+            f"PKR {_format_price(lo)}" if lo == hi
+            else f"PKR {_format_price(lo)} – {_format_price(hi)}"
         )
 
-    lines: list[str] = []
-    intro = f"I found **{len(results)} matching listing(s)**"
-    if purpose:
-        intro += f" for **{purpose}**"
-    if city:
-        intro += f" in **{city}**"
+    city_label = f" in {city}" if city else ""
+    purpose_label = f" for {purpose}" if purpose else ""
+    intro = f"Here are {len(results)} active listings{purpose_label}{city_label}"
+    if price_range:
+        intro += f", ranging from {price_range}"
     intro += "."
-    lines.append(intro)
 
-    lines.append("**Top options:**")
+    lines: list[str] = [intro, ""]
     for idx, item in enumerate(results[:3], start=1):
         title = item.get("title", "Untitled")
         price = _format_price(item.get("price", 0))
-        location = item.get("location") or item.get("city") or "Location not specified"
+        location = item.get("location") or item.get("city") or ""
         beds = item.get("number_of_bedrooms")
-        baths = item.get("number_of_bathrooms")
         area = _format_area(item.get("area", {}))
-        status = item.get("listing_status", "active")
 
-        detail_bits = [location]
+        detail_bits = []
+        if location:
+            detail_bits.append(location)
         if beds:
             detail_bits.append(f"{beds} bed")
-        if baths:
-            detail_bits.append(f"{baths} bath")
         if area:
             detail_bits.append(area)
-        detail_bits.append(f"status: {status}")
 
-        lines.append(f"**{idx}. {title}** — PKR {price}  \n{', '.join(detail_bits)}")
+        lines.append(f"**{idx}. {title}** — PKR {price}" + (f"  \n{', '.join(detail_bits)}" if detail_bits else ""))
 
     if len(results) > 3:
-        lines.append(
-            f"Showing top 3 here, with **{len(results) - 3} more** in the cards below. "
-            "I can narrow these further by budget, exact area, or preferred locality."
-        )
+        lines.append(f"\n{len(results) - 3} more are in the cards below — let me know if you want to filter further.")
     else:
-        lines.append("If you want, I can shortlist the best one based on your budget, commute, and family needs.")
+        lines.append("\nLet me know if you'd like to compare these or narrow down by budget or location.")
 
-    return "\n\n".join(lines)
+    return "\n".join(lines)
 
 
 def _build_smart_suggestions(query: str, filters: dict, results: list[dict]) -> list[str]:

@@ -17,6 +17,13 @@ class StructuredAnalysisOutput(BaseModel):
         description="Investment stance given macro, micro, and forecast context."
     )
     confidence_score: int = Field(ge=0, le=100, description="Confidence in the recommendation (0-100).")
+    summary: str = Field(
+        default="",
+        description=(
+            "2-4 sentence narrative that directly addresses the user's specific concerns "
+            "(e.g. flood risk, affordability, locality outlook). Natural, advisory tone."
+        ),
+    )
     forecast_chart_data: list[ForecastChartPoint] = Field(
         default_factory=list,
         description="6-12 month forward price trend points; align with forecaster when provided.",

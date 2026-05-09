@@ -12,6 +12,35 @@ app_port: 7860
 
 Production-oriented backend for Pakistan real-estate discovery with FastAPI + MongoDB + Clerk auth + AI search parsing.
 
+## Services Provided by the Backend
+
+- Authentication and authorization pipeline with Clerk JWT validation and role-based access.
+- Property listing management with CRUD, ownership checks, and publish controls.
+- Search services with structured filters, ranking, and viewport-aware map queries.
+- AI-powered intent parsing and chat query support for natural-language real-estate requests.
+- Agent profile services for discovery and management.
+- Media upload service with Cloudinary integration for listing images.
+- User profile and saved-search services to support personalized experiences.
+
+## Technologies Used
+
+- FastAPI for high-performance API development and automatic OpenAPI docs.
+- Uvicorn ASGI server for production-grade async request handling.
+- MongoDB Atlas with Motor/PyMongo for scalable document storage.
+- Pydantic + pydantic-settings for typed config and robust input validation.
+- Clerk integration for authentication and identity management.
+- LangChain + LangGraph for AI workflow orchestration and query intelligence.
+- Cloudinary for external media storage and delivery.
+- Docker for portable deployment to Hugging Face Spaces.
+
+## Why It Is Impactful
+
+- Centralizes real-estate operations behind a secure, well-structured API layer.
+- Enables smarter property exploration through combined filtering, ranking, and AI intent understanding.
+- Supports production deployment workflows with containerized infrastructure and environment-based configuration.
+- Improves platform reliability through modular route/service architecture and observability-ready structure.
+- Provides a strong foundation for scaling users, listings, and AI-driven product features.
+
 ## Features
 - Clerk JWT authentication with role-based authorization.
 - Property CRUD with ownership checks.
