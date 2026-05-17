@@ -1,5 +1,10 @@
 PROPERTIES_COLLECTION = "properties"
 USERS_COLLECTION = "users"
 AGENTS_COLLECTION = "agents"
-QUERY_HISTORY_COLLECTION = "query_history"
 SAVED_SEARCHES_COLLECTION = "saved_searches"
+
+
+
+
+
+

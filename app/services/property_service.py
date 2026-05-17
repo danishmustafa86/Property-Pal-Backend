@@ -1,9 +1,14 @@
+import asyncio
+import logging
+
 from fastapi import HTTPException, status
 
 from app.repositories.properties import PropertyRepository
 from app.schemas.common import serialize_mongo_id
 from app.schemas.property import PropertyCreate, PropertyUpdate
 from app.utils.area import sqft_to_marla, to_sqft
+
+logger = logging.getLogger(__name__)
 
 
 class PropertyService:
@@ -28,6 +33,23 @@ class PropertyService:
         score = sum(1 for field in fields if payload.get(field))
         return round((score / len(fields)) * 100, 2)
 
+    async def _enrich_with_places(self, property_id: str, lat: float, lng: float) -> None:
+        """Background task: call Google Places API and persist nearby_places to MongoDB."""
+        try:
+            from app.services.places_service import PlacesService
+            svc = PlacesService()
+            if not svc.is_configured():
+                return
+            enriched = await svc.enrich_property_places(lat, lng)
+            from app.db.mongodb import get_database
+            await get_database()["properties"].update_one(
+                {"_id": __import__("bson").ObjectId(property_id)},
+                {"$set": enriched},
+            )
+            logger.info("Places enrichment complete for property %s (%d places)", property_id, len(enriched.get("nearby_places", [])))
+        except Exception as exc:
+            logger.warning("Places enrichment failed for property %s: %s", property_id, exc)
+
     async def create(self, user: dict, data: PropertyCreate) -> dict:
         if user["role"] not in {"agent", "admin"}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only agents can create listings.")
@@ -35,7 +57,12 @@ class PropertyService:
         payload["listing_status"] = "active"
         payload["agent_id"] = user.get("agent_profile_id") or None
         created = await self.repo.create(owner_user_id=user["id"], payload=payload)
-        return serialize_mongo_id(created)
+        result = serialize_mongo_id(created)
+        # Enrich with real Google Places data in the background (non-blocking)
+        lat, lng = payload.get("latitude"), payload.get("longitude")
+        if lat and lng:
+            asyncio.create_task(self._enrich_with_places(result["id"], lat, lng))
+        return result
 
     async def get(self, property_id: str) -> dict:
         prop = await self.repo.get_by_id(property_id)

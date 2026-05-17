@@ -1,3 +1,5 @@
+import re
+
 from bson import ObjectId
 
 from app.db.mongodb import get_database
@@ -40,9 +42,30 @@ class SearchService:
                 area_q["$lte"] = to_sqft(search.max_marlas, "marla")
             query["area.value_sqft_normalized"] = area_q
         if search.rooms is not None:
-            query["number_of_bedrooms"] = {"$gte": search.rooms}
+            if search.max_rooms is not None:
+                query["number_of_bedrooms"] = {"$gte": search.rooms, "$lte": search.max_rooms}
+            else:
+                query["number_of_bedrooms"] = {"$gte": search.rooms}
         if search.bathrooms is not None:
             query["number_of_bathrooms"] = {"$gte": search.bathrooms}
+        if search.total_rooms is not None:
+            query["number_of_rooms"] = {"$gte": search.total_rooms}
+        if search.furnished is True:
+            query.setdefault("$and", []).append(
+                {
+                    "$or": [
+                        {"description": {"$regex": "furnished", "$options": "i"}},
+                        {"title": {"$regex": "furnished", "$options": "i"}},
+                    ]
+                }
+            )
+        elif search.furnished is False:
+            query.setdefault("$and", []).append(
+                {
+                    "description": {"$not": {"$regex": "furnished", "$options": "i"}},
+                    "title": {"$not": {"$regex": "furnished", "$options": "i"}},
+                }
+            )
         if search.new_construction is not None:
             query["new_construction"] = search.new_construction
         if search.garage is not None:
@@ -62,7 +85,20 @@ class SearchService:
                 }
             }
         if search.keyword:
-            query["$text"] = {"$search": search.keyword}
+            kw = search.keyword.strip()
+            query["$or"] = [
+                {"location": {"$regex": re.escape(kw), "$options": "i"}},
+                {"title": {"$regex": re.escape(kw), "$options": "i"}},
+                {"city": {"$regex": re.escape(kw), "$options": "i"}},
+                {"description": {"$regex": re.escape(kw), "$options": "i"}},
+            ]
+        place_types = search.near_place_types or (
+            [search.near_place_type] if search.near_place_type else []
+        )
+        if place_types:
+            and_clauses = query.setdefault("$and", [])
+            for pt in place_types:
+                and_clauses.append({"nearby_places": {"$elemMatch": {"place_type": pt}}})
         return query
 
     async def search(self, search: SearchRequest) -> dict:

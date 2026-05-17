@@ -5,6 +5,19 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.common import GeoPoint, MongoModel
 
+
+class NearbyPlace(BaseModel):
+    """Structured place entry returned by Google Places API."""
+    place_id: str = ""
+    name: str
+    place_type: str   # hospital | mosque | school | restaurant | market | pharmacy | park | bank | gym
+    distance_meters: float | None = None
+    rating: float | None = None
+    address: str | None = None
+    open_now: bool | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
 Purpose = Literal["rent", "buy"]
 PropertyType = Literal["house", "shop", "plot", "apartment", "office", "warehouse", "farmhouse"]
 AreaUnit = Literal["marla", "kanal", "sqft", "sqyd"]
@@ -50,6 +63,7 @@ class PropertyBase(MongoModel):
     nearby_mosques: list[str] = []
     nearby_markets: list[str] = []
     nearby_restaurants: list[str] = []
+    nearby_places: list[NearbyPlace] = []   # structured Google Places data (replaces static strings)
     environmental_risks: list[EnvironmentalRisk] = []
 
     owner_name: str

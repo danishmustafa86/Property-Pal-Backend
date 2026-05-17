@@ -18,13 +18,11 @@ class ChatQueryResponse(MongoModel):
     thread_id: str
     assistant_message: str
     interpreted_filters: SearchFilters | None = None
-    # Property-shaped dicts from search; avoids response validation failures on edge DB shapes.
     results: list[dict[str, Any]] = Field(default_factory=list)
-    suggestions: list[str] = Field(default_factory=list)
     pending_confirmation: dict | None = None
     tool_results: list[dict] = Field(default_factory=list)
-    # Investment analyst JSON: recommendation, confidence_score, forecast_chart_data, risk_factors, legal_notes, disclaimer
-    structured_analysis: dict[str, Any] | None = None
+    # Geocoded search location — present when user typed a place name
+    search_location: dict[str, Any] | None = None
 
 
 class QueryHistoryRecord(MongoModel):

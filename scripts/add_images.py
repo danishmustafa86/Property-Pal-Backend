@@ -2,8 +2,20 @@
 import asyncio
 import random
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.core.config import settings
+
+
+def _motor_kwargs() -> dict:
+    uri = settings.mongodb_uri.lower()
+    if "mongodb+srv://" in uri or "tls=true" in uri:
+        kwargs: dict = {"tlsCAFile": certifi.where()}
+        if settings.environment == "development":
+            kwargs["tlsAllowInvalidCertificates"] = True
+        return kwargs
+    return {}
 
 HOUSE_IMAGES = [
     "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop&q=80",
@@ -49,7 +61,7 @@ INTERIOR_IMAGES = [
 
 async def main():
     random.seed(42)
-    client = AsyncIOMotorClient(settings.mongodb_uri)
+    client = AsyncIOMotorClient(settings.mongodb_uri, **_motor_kwargs())
     db = client[settings.mongodb_db_name]
     col = db["properties"]
 

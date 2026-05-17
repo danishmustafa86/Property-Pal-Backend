@@ -2,14 +2,11 @@ from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import current_user, current_user_optional
 from app.repositories.queries import SavedSearchRepository
-from app.schemas.chat import ChatQueryRequest
 from app.schemas.search import IntentSearchRequest, SearchRequest
-from app.services.chat_service import ChatService
 from app.services.search_service import SearchService
 
 router = APIRouter()
 search_service = SearchService()
-chat_service = ChatService()
 saved_repo = SavedSearchRepository()
 
 
@@ -61,8 +58,15 @@ async def search_properties(
 
 
 @router.post("/intent")
-async def search_intent(payload: IntentSearchRequest, user: dict = Depends(current_user)):
-    return await chat_service.query(user, payload=ChatQueryRequest(query=payload.query, limit=payload.page_size))
+async def search_intent(payload: IntentSearchRequest, _: dict = Depends(current_user)):
+    from app.agents.parser import QueryParser
+    from app.utils.search_match import filter_listings
+
+    filters = QueryParser().parse(payload.query).model_dump(exclude_none=True)
+    kwargs = {k: v for k, v in filters.items() if k in SearchRequest.model_fields}
+    result = await search_service.search(SearchRequest(page_size=payload.page_size, **kwargs))
+    result["items"] = filter_listings(result.get("items", []), filters)
+    return result
 
 
 @router.post("/save")

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production"] = "development"
 
     mongodb_uri: str = Field(default="mongodb://localhost:27017")
+    # Optional: Atlas "Standard connection string" (mongodb://host:27017,...) when srv DNS is blocked.
+    mongodb_uri_standard: str | None = None
     mongodb_db_name: str = "real_estate"
     cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173"
 
@@ -25,26 +27,15 @@ class Settings(BaseSettings):
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
 
-    openai_api_key: str | None = None
-    openai_api_key_fallback: str | None = None
-    llm_base_url: str | None = None
-    llm_model: str = "meta-llama/Meta-Llama-3-70B-Instruct"
-    llm_temperature: float = 0.1
-    llm_max_tokens: int = 800
-    agent_enable_write_tools: bool = True
-    agent_require_write_confirmation: bool = True
-    agent_summary_trigger_messages: int = 12
-    agent_summary_keep_last_messages: int = 6
-    agent_summary_max_tokens: int = 256
+    google_maps_api_key: str | None = None
     default_page_size: int = 20
     max_page_size: int = 100
 
-    # Investment analyst pipeline
-    data_dir: str | None = None
-    tavily_api_key: str | None = None
-    investment_forecast_horizon_months: int = 12
+    openai_api_key: str | None = None
+    llm_model: str = "gpt-4o"
+    llm_temperature: float = 0.1
 
-    @field_validator("clerk_jwks_url", "llm_base_url", mode="before")
+    @field_validator("clerk_jwks_url", mode="before")
     @classmethod
     def blank_to_none(cls, value):
         if isinstance(value, str) and not value.strip():

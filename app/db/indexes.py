@@ -7,7 +7,6 @@ async def create_indexes() -> None:
     db = get_database()
     properties = db["properties"]
     users = db["users"]
-    queries = db["query_history"]
 
     await properties.create_index([("geo_point", GEOSPHERE)], name="geo_point_2dsphere")
     await properties.create_index(
@@ -30,5 +29,3 @@ async def create_indexes() -> None:
 
     await users.create_index([("clerk_user_id", ASCENDING)], name="clerk_user_id_unique", unique=True)
     await users.create_index([("email", ASCENDING)], name="email_idx")
-
-    await queries.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)], name="query_history_idx")
