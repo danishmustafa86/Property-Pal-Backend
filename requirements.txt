@@ -14,3 +14,4 @@ pytest-asyncio
 python-multipart
 langgraph
 langchain-core
+langchain-openai
